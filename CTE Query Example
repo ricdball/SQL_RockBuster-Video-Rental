@@ -1,0 +1,53 @@
+# CTE SQL query showing the top 10 performing countries with their revenue, customer count, and the preferred top selling movie genre of the country.
+
+# Creating CTE table to find to 10 countries
+
+WITH top_10_countries
+AS (SELECT E.country,
+           SUM(P.amount) AS total_payment,
+           COUNT(DISTINCT P.customer_id) AS customer_count
+    FROM payment P
+    JOIN customer B ON P.customer_id = B.customer_id
+    JOIN address C ON B.address_id = C.address_id
+    JOIN city D ON C.city_id = D.city_id
+    JOIN country E ON D.country_id = E.country_id
+    GROUP BY E.country
+    ORDER BY total_payment DESC, customer_count DESC
+    LIMIT 10),
+
+# Creating CTE table to find top selling genres of top 10 countries
+
+top_country_genre AS (
+    SELECT E.country,
+           CA.name AS movie_genre,
+           COUNT(*) AS genre_count
+    FROM customer B
+    JOIN address C ON B.address_id = C.address_id
+    JOIN city D ON C.city_id = D.city_id
+    JOIN country E ON D.country_id = E.country_id
+    JOIN rental R ON B.customer_id = R.customer_id
+    JOIN inventory I ON R.inventory_id = I.inventory_id
+    JOIN film F ON I.film_id = F.film_id
+    JOIN film_category FC ON F.film_id = FC.film_id
+    JOIN category CA ON FC.category_id=CA.category_id
+    WHERE E.country IN (SELECT country FROM top_10_countries)
+    GROUP BY E.country,
+             CA.name),
+
+# Creating CTE table ranking top selling genres of top 10 countries to find the top 1 genre for each country
+
+ranked_genres AS (SELECT country,
+                         movie_genre,
+                         genre_count,
+              ROW_NUMBER() OVER(PARTITION BY country ORDER BY genre_count DESC) AS genre_rank
+                  FROM top_country_genre)
+
+# Creating query combining results of previous CTE tables to show the top 10 countries with their revenue amounts, customer counts, and the countries preferred movie genre. 
+
+SELECT tc.country,
+      tc.total_payment,
+      tc.customer_count,
+      rg.movie_genre
+FROM top_10_countries tc
+LEFT JOIN ranked_genres rg ON tc.country = rg.country AND rg.genre_rank = 1
+ORDER BY tc.total_payment DESC
